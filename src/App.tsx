@@ -15,6 +15,8 @@ export default function App() {
   const [scanStep, setScanStep] = useState<number>(0);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [intensity, setIntensity] = useState(0.8);
+  const [effectStyle, setEffectStyle] = useState<'chiaroscuro' | 'roversi'>('chiaroscuro');
   const [isCropping, setIsCropping] = useState(false);
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
@@ -73,50 +75,100 @@ export default function App() {
       canvas.height = img.naturalHeight;
 
       if (ctx) {
-        // Professional Studio Isolation Logic:
-        ctx.fillStyle = '#050c14'; 
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (effectStyle === 'chiaroscuro') {
+          // Professional Studio Isolation Logic:
+          ctx.fillStyle = '#050c14'; 
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.filter = 'brightness(0.98) contrast(1.5) saturate(0.7)';
-        
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = canvas.width;
-        tempCanvas.height = canvas.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        
-        if (tempCtx) {
-          tempCtx.drawImage(img, 0, 0);
+          const brightness = 1 - (0.02 * intensity);
+          const contrast = 1 + (0.5 * intensity);
+          ctx.filter = `brightness(${brightness}) contrast(${contrast}) saturate(0.7)`;
           
-          const gradient = tempCtx.createRadialGradient(
-            canvas.width / 2, canvas.height * 0.45, 0,
-            canvas.width / 2, canvas.height * 0.45, Math.max(canvas.width, canvas.height) * 0.6
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = canvas.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          
+          if (tempCtx) {
+            tempCtx.drawImage(img, 0, 0);
+            
+            const gradient = tempCtx.createRadialGradient(
+              canvas.width / 2, canvas.height * 0.45, 0,
+              canvas.width / 2, canvas.height * 0.45, Math.max(canvas.width, canvas.height) * 0.6
+            );
+            gradient.addColorStop(0, 'rgba(0,0,0,1)');
+            gradient.addColorStop(0.5, 'rgba(0,0,0,1)'); 
+            gradient.addColorStop(0.95, 'rgba(0,0,0,0)');
+
+            tempCtx.globalCompositeOperation = 'destination-in';
+            tempCtx.fillStyle = gradient;
+            tempCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.drawImage(tempCanvas, 0, 0);
+          }
+
+          const ambientGradient = ctx.createRadialGradient(
+            canvas.width * 0.7, canvas.height * 0.3, 0,
+            canvas.width * 0.7, canvas.height * 0.3, canvas.width 
           );
-          gradient.addColorStop(0, 'rgba(0,0,0,1)');
-          gradient.addColorStop(0.5, 'rgba(0,0,0,1)'); 
-          gradient.addColorStop(0.95, 'rgba(0,0,0,0)');
+          ambientGradient.addColorStop(0, 'rgba(255,255,255,0.03)');
+          ambientGradient.addColorStop(1, 'rgba(0,0,0,0.4)');
+          
+          ctx.globalCompositeOperation = 'overlay';
+          ctx.fillStyle = ambientGradient;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+          // Paolo Roversi Effect
+          ctx.fillStyle = '#f0f0f0'; 
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          tempCtx.globalCompositeOperation = 'destination-in';
-          tempCtx.fillStyle = gradient;
-          tempCtx.fillRect(0, 0, canvas.width, canvas.height);
+          const blur = 2 * intensity;
+          const brightness = 1.05 + (0.1 * intensity);
+          const contrast = 0.95 - (0.15 * intensity);
+          ctx.filter = `blur(${blur}px) brightness(${brightness}) contrast(${contrast}) saturate(0.5) sepia(0.2)`;
 
-          ctx.drawImage(tempCanvas, 0, 0);
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = canvas.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          
+          if (tempCtx) {
+            tempCtx.drawImage(img, 0, 0);
+            
+            const gradient = tempCtx.createRadialGradient(
+              canvas.width / 2, canvas.height * 0.4, 0,
+              canvas.width / 2, canvas.height * 0.4, Math.max(canvas.width, canvas.height) * 0.7
+            );
+            gradient.addColorStop(0, 'rgba(0,0,0,1)');
+            gradient.addColorStop(0.3, 'rgba(0,0,0,0.8)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+
+            tempCtx.globalCompositeOperation = 'destination-in';
+            tempCtx.fillStyle = gradient;
+            tempCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.drawImage(tempCanvas, 0, 0);
+          }
+
+          // Soft ethereal glow
+          ctx.globalCompositeOperation = 'screen';
+          ctx.filter = 'blur(20px) opacity(0.3)';
+          ctx.drawImage(img, 0, 0);
         }
-
-        const ambientGradient = ctx.createRadialGradient(
-          canvas.width * 0.7, canvas.height * 0.3, 0,
-          canvas.width * 0.7, canvas.height * 0.3, canvas.width 
-        );
-        ambientGradient.addColorStop(0, 'rgba(255,255,255,0.03)');
-        ambientGradient.addColorStop(1, 'rgba(0,0,0,0.4)');
-        
-        ctx.globalCompositeOperation = 'overlay';
-        ctx.fillStyle = ambientGradient;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         setProcessedImageUrl(canvas.toDataURL('image/png'));
       }
     };
   };
+
+  useEffect(() => {
+    if (isProcessed) {
+      const timer = setTimeout(() => {
+        generateProcessedPreview();
+      }, 300); // Debounce
+      return () => clearTimeout(timer);
+    }
+  }, [intensity, effectStyle, isProcessed]);
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     if (aspect) {
@@ -295,14 +347,57 @@ export default function App() {
                 <Upload className="w-4 h-4" />
                 <span>Upload Reference</span>
               </button>
-              <input 
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept="image/*"
-                className="hidden"
-              />
             </div>
+
+            {/* Effect Controls */}
+            <AnimatePresence>
+              {isProcessed && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-10 p-6 bg-white/5 rounded-2xl border border-white/10"
+                >
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Style Configuration</span>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setEffectStyle('chiaroscuro')}
+                            className={`px-3 py-1 rounded-full text-[9px] uppercase tracking-tighter transition-all ${effectStyle === 'chiaroscuro' ? 'bg-[#F27D26] text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
+                          >
+                            Chiaroscuro
+                          </button>
+                          <button 
+                            onClick={() => setEffectStyle('roversi')}
+                            className={`px-3 py-1 rounded-full text-[9px] uppercase tracking-tighter transition-all ${effectStyle === 'roversi' ? 'bg-[#F27D26] text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
+                          >
+                            Paolo Roversi
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Intensity Alpha</span>
+                        <span className="text-[10px] font-mono text-[#F27D26]">{(intensity * 100).toFixed(0)}%</span>
+                      </div>
+                      <input 
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={intensity}
+                        onChange={(e) => setIntensity(parseFloat(e.target.value))}
+                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#F27D26]"
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="mt-16 flex items-center gap-12 border-t border-[#f5f2ed]/10 pt-8">
               <div className="flex flex-col">
@@ -420,7 +515,7 @@ export default function App() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.8 }}
-                    className="w-full h-full relative overflow-hidden bg-[#050c14]"
+                    className={`w-full h-full relative overflow-hidden ${effectStyle === 'chiaroscuro' ? 'bg-[#050c14]' : 'bg-[#f0f0f0]'}`}
                   >
                     {isCropping && (
                       <div className="absolute inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-md">
@@ -486,23 +581,32 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Studio Backdrop - Contrasting solid dark color */}
-                    <div className="absolute inset-0 bg-[#050c14] z-0 overflow-hidden">
-                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-radial-gradient from-[#0a1a2a] to-transparent opacity-60 blur-3xl" />
+                    {/* Studio Backdrop */}
+                    <div className={`absolute inset-0 z-0 overflow-hidden ${effectStyle === 'chiaroscuro' ? 'bg-[#050c14]' : 'bg-[#f0f0f0]'}`}>
+                       <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-radial-gradient blur-3xl ${effectStyle === 'chiaroscuro' ? 'from-[#0a1a2a] to-transparent opacity-60' : 'from-white to-transparent opacity-80'}`} />
                     </div>
                     
                     <motion.div
                       layoutId="subject"
                       className="w-full h-full relative z-10"
                       style={{
-                        maskImage: 'radial-gradient(ellipse 50% 65% at 50% 45%, black 45%, transparent 95%)',
-                        WebkitMaskImage: 'radial-gradient(ellipse 50% 65% at 50% 45%, black 45%, transparent 95%)',
+                        maskImage: effectStyle === 'chiaroscuro' 
+                          ? 'radial-gradient(ellipse 50% 65% at 50% 45%, black 45%, transparent 95%)'
+                          : 'radial-gradient(ellipse 50% 65% at 50% 45%, black 30%, rgba(0,0,0,0.8) 50%, transparent 90%)',
+                        WebkitMaskImage: effectStyle === 'chiaroscuro' 
+                          ? 'radial-gradient(ellipse 50% 65% at 50% 45%, black 45%, transparent 95%)'
+                          : 'radial-gradient(ellipse 50% 65% at 50% 45%, black 30%, rgba(0,0,0,0.8) 50%, transparent 90%)',
                       }}
                     >
                       <img 
                         src={currentImageUrl}
-                        alt="Chiaroscuro Cutout"
-                        className="w-full h-full object-cover brightness-[0.98] contrast-[1.5] saturate-[0.7] drop-shadow-[0_0_40px_rgba(0,0,0,0.8)]"
+                        alt="Studio Cutout"
+                        className="w-full h-full object-cover transition-all duration-300"
+                        style={{
+                          filter: effectStyle === 'chiaroscuro' 
+                            ? `brightness(${1 - (0.02 * intensity)}) contrast(${1 + (0.5 * intensity)}) saturate(0.7) drop-shadow(0 0 ${20 + 20 * intensity}px rgba(0,0,0,0.8))`
+                            : `blur(${2 * intensity}px) brightness(${1.05 + (0.1 * intensity)}) contrast(${0.95 - (0.15 * intensity)}) saturate(0.5) sepia(0.2)`,
+                        }}
                         referrerPolicy="no-referrer"
                       />
                     </motion.div>
@@ -511,12 +615,14 @@ export default function App() {
                     <div 
                       className="absolute inset-0 pointer-events-none mix-blend-overlay opacity-25 z-15"
                       style={{
-                        background: 'linear-gradient(215deg, rgba(242, 125, 38, 0.2) 0%, transparent 60%)'
+                        background: effectStyle === 'chiaroscuro'
+                          ? 'linear-gradient(215deg, rgba(242, 125, 38, 0.2) 0%, transparent 60%)'
+                          : 'linear-gradient(215deg, rgba(255, 255, 255, 0.4) 0%, transparent 60%)'
                       }}
                     />
 
-                    <div className="absolute top-4 left-4 bg-[#F27D26] px-3 py-1 rounded-full text-[10px] text-black uppercase tracking-[0.2em] font-bold z-30">
-                      Cutout: Isolated
+                    <div className={`absolute top-4 left-4 ${effectStyle === 'chiaroscuro' ? 'bg-[#F27D26] text-black' : 'bg-black text-white'} px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] font-bold z-30`}>
+                      {effectStyle === 'chiaroscuro' ? 'Chiaroscuro' : 'Paolo Roversi'}
                     </div>
 
                     <div className="absolute bottom-6 left-6 right-6 flex items-center justify-between pointer-events-auto z-30">
