@@ -223,16 +223,16 @@ export default function App() {
 
             <div className="mt-16 flex items-center gap-12 border-t border-[#f5f2ed]/10 pt-8">
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Backdrop Color</span>
-                <span className="text-sm font-medium italic">DEEP CHARCOAL</span>
+                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Segmentation</span>
+                <span className="text-sm font-medium">META SAM 2</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Crop Mode</span>
-                <span className="text-sm font-medium">STUDIO-ELITE</span>
+                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Refinement</span>
+                <span className="text-sm font-medium">BiRefNet</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Edge Refine</span>
-                <span className="text-sm font-medium">ULTRA-SMOOTH</span>
+                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Edge Quality</span>
+                <span className="text-sm font-medium">LOSSLESS</span>
               </div>
             </div>
           </motion.div>
@@ -303,9 +303,9 @@ export default function App() {
 
                     <div className="mt-8 text-center bg-black/90 backdrop-blur-2xl px-8 py-4 rounded-full border border-white/20 shadow-2xl z-40">
                       <span className="text-[10px] tracking-[0.5em] uppercase text-[#F27D26] font-black">
-                        {scanStep === 1 ? "Detecting Subject" : 
-                         scanStep === 2 ? "Marching Ants Selection" : 
-                         "Refining Studio Edge"}
+                        {scanStep === 1 ? "SAM 2: SEGMENTING SUBJECT" : 
+                         scanStep === 2 ? "BiRefNet: REFINING EDGES" : 
+                         "FINALIZING STUDIO RENDER"}
                       </span>
                     </div>
                   </motion.div>

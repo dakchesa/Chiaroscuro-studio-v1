@@ -1,6 +1,6 @@
 {
-  "name": "Chiaroscuro Studio",
-  "description": "Professional-grade portrait studio for applying dramatic chiaroscuro lighting and studio background removal.",
+  "name": "Chiaroscuro Studio Elite",
+  "description": "Professional-grade portrait studio utilizing SAM 2 for segmentation and BiRefNet for edge refinement, producing realistic studio cutouts with dramatic chiaroscuro lighting.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
