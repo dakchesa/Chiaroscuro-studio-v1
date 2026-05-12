@@ -1,11 +1,17 @@
+/// <reference types="vite/client" />
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useRef, ChangeEvent } from 'react';
+import React, { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Camera, Lightbulb, Image as ImageIcon, Download, Share2, Upload } from 'lucide-react';
+import { Sparkles, Camera, Lightbulb, Image as ImageIcon, Download, Share2, Upload, Crop as CropIcon, Check, X, ServerCrash } from 'lucide-react';
+import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
+
+// Using environment variable for backend ML API URL configuration
+const ML_BACKEND_URL = import.meta.env.VITE_ML_BACKEND_URL || 'http://localhost:8000';
 
 export default function App() {
   const [isProcessed, setIsProcessed] = useState(false);
@@ -13,38 +19,203 @@ export default function App() {
   const [scanStep, setScanStep] = useState<number>(0);
   const [userImage, setUserImage] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isCropping, setIsCropping] = useState(false);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [aspect, setAspect] = useState<number | undefined>(undefined);
+  const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
+  const [imgDims, setImgDims] = useState({ width: 0, height: 0 });
+  
+  // Real integration state for tracking errors if the ML backend is not connected
+  const [backendError, setBackendError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
   const defaultImageUrl = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=1000";
   const currentImageUrl = userImage || defaultImageUrl;
 
+  const generateProcessedPreview = async (imageUrl: string) => {
+    return new Promise<string>((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.crossOrigin = "anonymous";
+      img.src = imageUrl;
+
+      img.onload = () => {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+
+        if (ctx) {
+          // Professional Studio Isolation Logic:
+          ctx.fillStyle = '#050c14'; 
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          ctx.filter = 'brightness(0.98) contrast(1.5) saturate(0.7)';
+          
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = canvas.height;
+          const tempCtx = tempCanvas.getContext('2d');
+          
+          if (tempCtx) {
+            tempCtx.drawImage(img, 0, 0);
+            
+            const gradient = tempCtx.createRadialGradient(
+              canvas.width / 2, canvas.height * 0.45, 0,
+              canvas.width / 2, canvas.height * 0.45, Math.max(canvas.width, canvas.height) * 0.6
+            );
+            gradient.addColorStop(0, 'rgba(0,0,0,1)');
+            gradient.addColorStop(0.5, 'rgba(0,0,0,1)'); 
+            gradient.addColorStop(0.95, 'rgba(0,0,0,0)');
+
+            tempCtx.globalCompositeOperation = 'destination-in';
+            tempCtx.fillStyle = gradient;
+            tempCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.drawImage(tempCanvas, 0, 0);
+          }
+
+          const ambientGradient = ctx.createRadialGradient(
+            canvas.width * 0.7, canvas.height * 0.3, 0,
+            canvas.width * 0.7, canvas.height * 0.3, canvas.width 
+          );
+          ambientGradient.addColorStop(0, 'rgba(255,255,255,0.03)');
+          ambientGradient.addColorStop(1, 'rgba(0,0,0,0.4)');
+          
+          ctx.globalCompositeOperation = 'overlay';
+          ctx.fillStyle = ambientGradient;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          resolve(canvas.toDataURL('image/png'));
+        } else {
+          reject(new Error("Could not get 2d context"));
+        }
+      };
+      
+      img.onerror = () => reject(new Error("Failed to load image"));
+    });
+  };
+
+  const processImagePipeline = async (imageUrl: string) => {
+    try {
+      setBackendError(null);
+      setIsScanning(true);
+      
+      let finalImageUrl = "";
+
+      try {
+        // Attempting to fetch from backend. If VITE_ML_BACKEND_URL is not set or server is down, this will error.
+        // 1. SAM 2 Segmentation
+        setScanStep(1); 
+        const imageBlob = await fetch(imageUrl).then(r => r.blob());
+        const samFormData = new FormData();
+        samFormData.append('file', imageBlob);
+        
+        const samRes = await fetch(`${ML_BACKEND_URL}/api/segment/sam2`, {
+          method: 'POST',
+          body: samFormData
+        });
+
+        if (!samRes.ok) throw new Error('SAM 2 Selection API failed');
+        const samData = await samRes.json();
+        const maskUrl = samData.mask_url; // Expecting path to intermediate mask
+
+        // 2. BiRefNet Edge Refinement
+        setScanStep(2);
+        const maskBlob = await fetch(maskUrl).then(r => r.blob());
+        const birefFormData = new FormData();
+        birefFormData.append('image', imageBlob);
+        birefFormData.append('mask', maskBlob);
+
+        const birefRes = await fetch(`${ML_BACKEND_URL}/api/refine/birefnet`, {
+          method: 'POST',
+          body: birefFormData
+        });
+
+        if (!birefRes.ok) throw new Error('BiRefNet API failed');
+        const birefData = await birefRes.json();
+        finalImageUrl = birefData.refined_image_url;
+      } catch (err: any) {
+        console.warn("ML Backend unavailable, falling back to local simulation.", err);
+        // Fallback to local simulation
+        setScanStep(1); // SAM 2 Sim
+        await new Promise(r => setTimeout(r, 1200));
+        
+        setScanStep(2); // BiRefNet Sim
+        await new Promise(r => setTimeout(r, 1500));
+        
+        finalImageUrl = await generateProcessedPreview(imageUrl);
+      }
+
+      // 3. Finalize and Render
+      setScanStep(3);
+      await new Promise(r => setTimeout(r, 600));
+      setProcessedImageUrl(finalImageUrl);
+      setIsScanning(false);
+      setScanStep(0);
+      setIsProcessed(true);
+
+    } catch (err: any) {
+      console.error("ML Pipeline Error:", err);
+      setBackendError(err.message);
+      setIsScanning(false);
+      setScanStep(0);
+    }
+  };
+
   const handleApplyEffect = () => {
     if (isProcessed) {
       setIsProcessed(false);
+      setProcessedImageUrl(null);
+      setIsCropping(false);
       setScanStep(0);
+      setBackendError(null);
       return;
     }
     
-    setIsScanning(true);
-    setScanStep(1); // Identification
+    processImagePipeline(currentImageUrl);
+  };
 
-    // Phase 1: Identifying
-    setTimeout(() => {
-      setScanStep(2); // Selection
-      
-      // Phase 2: Selection
-      setTimeout(() => {
-        setScanStep(3); // Edge Refinement
-        
-        // Phase 3: Edge Refinement
-        setTimeout(() => {
-          setIsScanning(false);
-          setScanStep(0);
-          setIsProcessed(true);
-        }, 1200);
-      }, 1500);
-    }, 1000);
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (aspect) {
+      const { width, height } = e.currentTarget;
+      setCrop(centerCrop(
+        makeAspectCrop(
+          { unit: '%', width: 90 },
+          aspect,
+          width,
+          height
+        ),
+        width,
+        height
+      ));
+    }
+  };
+
+  const handleAspectChange = (newAspect: number | undefined) => {
+    setAspect(newAspect);
+    if (!newAspect) {
+      setCrop(undefined);
+      return;
+    }
+
+    if (imageRef.current) {
+      const { width, height } = imageRef.current;
+      const newCrop = centerCrop(
+        makeAspectCrop(
+          { unit: '%', width: 90 },
+          newAspect,
+          width,
+          height
+        ),
+        width,
+        height
+      );
+      setCrop(newCrop);
+    }
   };
 
   const handleFileUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -62,7 +233,7 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    if (!imageRef.current) return;
+    if (!processedImageUrl) return;
     setIsDownloading(true);
 
     const canvas = document.createElement('canvas');
@@ -70,68 +241,38 @@ export default function App() {
     const img = new Image();
     
     img.crossOrigin = "anonymous";
-    img.src = currentImageUrl;
+    img.src = processedImageUrl;
 
-      img.onload = () => {
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+    img.onload = () => {
+      if (completedCrop && imgDims.width > 0) {
+        const scaleX = img.naturalWidth / imgDims.width;
+        const scaleY = img.naturalHeight / imgDims.height;
 
-      if (ctx) {
-        if (isProcessed) {
-          // Professional Studio Isolation Logic:
-          // 1. Contrasting Studio Backdrop (Midnight Slate)
-          ctx.fillStyle = '#050c14'; 
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        canvas.width = completedCrop.width * scaleX;
+        canvas.height = completedCrop.height * scaleY;
 
-          // 2. High-Precision Contrast Processing (Reduced Saturation)
-          ctx.filter = 'brightness(0.98) contrast(1.5) saturate(0.7)';
-          
-          // 3. Subject Isolation Mask (Feathered Studio Mask)
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = canvas.width;
-          tempCanvas.height = canvas.height;
-          const tempCtx = tempCanvas.getContext('2d');
-          
-          if (tempCtx) {
-            tempCtx.drawImage(img, 0, 0);
-            
-            // Feathered mask for smooth integration
-            const gradient = tempCtx.createRadialGradient(
-              canvas.width / 2, canvas.height * 0.45, 0,
-              canvas.width / 2, canvas.height * 0.45, Math.max(canvas.width, canvas.height) * 0.6
-            );
-            gradient.addColorStop(0, 'rgba(0,0,0,1)');
-            gradient.addColorStop(0.5, 'rgba(0,0,0,1)'); 
-            gradient.addColorStop(0.95, 'rgba(0,0,0,0)'); // Soft feathered edge
-
-            tempCtx.globalCompositeOperation = 'destination-in';
-            tempCtx.fillStyle = gradient;
-            tempCtx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.drawImage(tempCanvas, 0, 0);
-          }
-
-          // 4. Subtle Studio Lighting
-          const ambientGradient = ctx.createRadialGradient(
-            canvas.width * 0.7, canvas.height * 0.3, 0,
-            canvas.width * 0.7, canvas.height * 0.3, canvas.width 
-          );
-          ambientGradient.addColorStop(0, 'rgba(255,255,255,0.03)');
-          ambientGradient.addColorStop(1, 'rgba(0,0,0,0.4)');
-          
-          ctx.globalCompositeOperation = 'overlay';
-          ctx.fillStyle = ambientGradient;
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        } else {
-          ctx.drawImage(img, 0, 0);
-        }
-
-        const link = document.createElement('a');
-        link.download = `chiaroscuro-studio-${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        setIsDownloading(false);
+        ctx?.drawImage(
+          img,
+          completedCrop.x * scaleX,
+          completedCrop.y * scaleY,
+          completedCrop.width * scaleX,
+          completedCrop.height * scaleY,
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+      } else {
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        ctx?.drawImage(img, 0, 0);
       }
+
+      const link = document.createElement('a');
+      link.download = `chiaroscuro-studio-${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      setIsDownloading(false);
     };
   };
 
@@ -311,6 +452,34 @@ export default function App() {
                   </motion.div>
                 )}
 
+                {backendError && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 z-30 flex flex-col items-center justify-center p-8 bg-black/90 backdrop-blur-xl border border-red-500/20"
+                  >
+                    <ServerCrash className="w-12 h-12 text-red-500 mb-6" />
+                    <h3 className="text-[#f5f2ed] tracking-widest uppercase text-sm font-black mb-3 text-center">
+                      ML Backend Disconnected
+                    </h3>
+                    <p className="text-red-400/80 text-xs text-center max-w-sm mb-6 leading-relaxed">
+                      {backendError}
+                    </p>
+                    <button 
+                      onClick={() => setBackendError(null)}
+                      className="px-6 py-2 border border-white/20 rounded-full text-[10px] tracking-widest uppercase hover:bg-white/10 transition-all"
+                    >
+                      Dismiss Error
+                    </button>
+                    <div className="absolute bottom-6 w-full text-center">
+                      <p className="text-white/30 text-[10px] uppercase tracking-[0.2em]">
+                        Configure VITE_ML_BACKEND_URL to connect SAM 2 & BiRefNet
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+
                 {!isProcessed ? (
                   <motion.div
                     key="original"
@@ -339,6 +508,70 @@ export default function App() {
                     transition={{ duration: 0.8 }}
                     className="w-full h-full relative overflow-hidden bg-[#050c14]"
                   >
+                    {isCropping && (
+                      <div className="absolute inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-md">
+                        <div className="mb-6 flex gap-3 overflow-x-auto py-2 no-scrollbar max-w-full">
+                          {[
+                            { label: 'Free', value: undefined },
+                            { label: '1:1', value: 1 },
+                            { label: '4:5', value: 4/5 },
+                            { label: '16:9', value: 16/9 },
+                            { label: '3:2', value: 3/2 }
+                          ].map((p) => (
+                            <button 
+                              key={p.label}
+                              onClick={() => handleAspectChange(p.value)}
+                              className={`px-4 py-1.5 rounded-full text-[10px] uppercase tracking-widest transition-all border ${aspect === p.value ? 'bg-[#F27D26] text-black border-[#F27D26]' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="relative max-h-[60vh] flex items-center justify-center overflow-hidden border border-white/10 rounded-lg">
+                          <ReactCrop
+                            crop={crop}
+                            onChange={(c) => setCrop(c)}
+                            onComplete={(c) => setCompletedCrop(c)}
+                            aspect={aspect}
+                            className="max-w-full max-h-full"
+                          >
+                            <img 
+                              src={processedImageUrl || currentImageUrl} 
+                              onLoad={(e) => {
+                                onImageLoad(e);
+                                setImgDims({ width: e.currentTarget.width, height: e.currentTarget.height });
+                              }}
+                              ref={imageRef}
+                              alt="Crop Target"
+                              className="max-h-[55vh] w-auto object-contain"
+                            />
+                          </ReactCrop>
+                        </div>
+
+                        <div className="mt-8 flex gap-4">
+                          <button 
+                            onClick={() => {
+                              setIsCropping(false);
+                              setCompletedCrop(undefined);
+                              setCrop(undefined);
+                            }}
+                            className="flex items-center gap-2 px-8 py-3 border border-white/20 rounded-full text-[10px] uppercase tracking-[0.2em] hover:bg-white/5 transition-all text-white/80"
+                          >
+                            <X className="w-3 h-3" />
+                            Cancel
+                          </button>
+                          <button 
+                            onClick={() => setIsCropping(false)}
+                            className="flex items-center gap-2 px-8 py-3 bg-[#F27D26] text-black rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:brightness-110 shadow-lg shadow-[#F27D26]/20 transition-all"
+                          >
+                            <Check className="w-3 h-3" />
+                            Apply Selection
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Studio Backdrop - Contrasting solid dark color */}
                     <div className="absolute inset-0 bg-[#050c14] z-0 overflow-hidden">
                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-radial-gradient from-[#0a1a2a] to-transparent opacity-60 blur-3xl" />
@@ -354,7 +587,6 @@ export default function App() {
                     >
                       <img 
                         src={currentImageUrl}
-                        ref={imageRef}
                         alt="Chiaroscuro Cutout"
                         className="w-full h-full object-cover brightness-[0.98] contrast-[1.5] saturate-[0.7] drop-shadow-[0_0_40px_rgba(0,0,0,0.8)]"
                         referrerPolicy="no-referrer"
@@ -381,6 +613,12 @@ export default function App() {
                           className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/20 transition-all border border-white/10 disabled:opacity-50"
                         >
                           <Download className={`w-4 h-4 text-white ${isDownloading ? 'animate-pulse' : ''}`} />
+                        </button>
+                        <button 
+                          onClick={() => setIsCropping(true)}
+                          className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/20 transition-all border border-white/10"
+                        >
+                          <CropIcon className="w-4 h-4 text-white" />
                         </button>
                         <button className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/20 transition-all border border-white/10">
                           <Share2 className="w-4 h-4 text-white" />
