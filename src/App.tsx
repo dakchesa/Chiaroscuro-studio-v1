@@ -17,6 +17,7 @@ export default function App() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [intensity, setIntensity] = useState(0.8);
   const [effectStyle, setEffectStyle] = useState<'chiaroscuro' | 'roversi'>('chiaroscuro');
+  const [showOutline, setShowOutline] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
@@ -82,7 +83,11 @@ export default function App() {
 
           const brightness = 1 - (0.02 * intensity);
           const contrast = 1 + (0.5 * intensity);
-          ctx.filter = `brightness(${brightness}) contrast(${contrast}) saturate(0.7)`;
+          let filterStr = `brightness(${brightness}) contrast(${contrast}) saturate(0.7)`;
+          if (showOutline) {
+            filterStr += ' drop-shadow(0 0 4px rgba(242, 125, 38, 0.4))';
+          }
+          ctx.filter = filterStr;
           
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = canvas.width;
@@ -119,13 +124,17 @@ export default function App() {
           ctx.fillRect(0, 0, canvas.width, canvas.height);
         } else {
           // Paolo Roversi Effect
-          ctx.fillStyle = '#f0f0f0'; 
+          ctx.fillStyle = '#050c14'; 
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
           const blur = 2 * intensity;
           const brightness = 1.05 + (0.1 * intensity);
           const contrast = 0.95 - (0.15 * intensity);
-          ctx.filter = `blur(${blur}px) brightness(${brightness}) contrast(${contrast}) saturate(0.5) sepia(0.2)`;
+          let filterStr = `blur(${blur}px) brightness(${brightness}) contrast(${contrast}) saturate(0.5) sepia(0.2)`;
+          if (showOutline) {
+            filterStr += ' drop-shadow(0 0 5px rgba(255, 255, 255, 0.3))';
+          }
+          ctx.filter = filterStr;
 
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = canvas.width;
@@ -168,7 +177,7 @@ export default function App() {
       }, 300); // Debounce
       return () => clearTimeout(timer);
     }
-  }, [intensity, effectStyle, isProcessed]);
+  }, [intensity, effectStyle, showOutline, isProcessed]);
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     if (aspect) {
@@ -301,123 +310,9 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="relative z-10 grid lg:grid-cols-2 min-h-[calc(100vh-89px)]">
-        {/* Left Column: Hero Content */}
-        <div className="flex flex-col justify-center p-8 lg:p-20 order-2 lg:order-1">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-          >
-            <span className="text-[#F27D26] text-xs font-bold uppercase tracking-[0.3em] mb-4 block">
-              Classical Chiaroscuro
-            </span>
-            <h1 className="text-6xl lg:text-8xl font-light leading-[0.9] mb-8 tracking-tighter">
-              Subject <br />
-              <span className="italic font-serif text-[#F27D26]">Mastery.</span>
-            </h1>
-            <p className="text-[#f5f2ed]/70 text-lg max-w-md mb-12 leading-relaxed font-light">
-              Automatic subject identification and smooth studio cropping. We eliminate the background and place your subject in a high-contrast environment, just as if it were taken in a professional studio.
-            </p>
-
-            <div className="flex flex-wrap gap-4">
-              <button 
-                onClick={handleApplyEffect}
-                disabled={isScanning}
-                className="group relative px-8 py-4 bg-[#f5f2ed] text-black font-semibold rounded-full overflow-hidden transition-all hover:pr-12 disabled:opacity-50"
-              >
-                <span className="relative z-10 flex items-center gap-2">
-                  {isScanning ? "Identifying Subject..." : isProcessed ? "Original View" : "Apply Studio Effect"}
-                  <Sparkles className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-                </span>
-                <motion.div 
-                  className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100"
-                  initial={false}
-                  animate={isProcessed ? { x: 0 } : { x: -10 }}
-                >
-                  <Sparkles className="w-4 h-4 text-[#F27D26]" />
-                </motion.div>
-              </button>
-              
-              <button 
-                onClick={triggerUpload}
-                disabled={isScanning}
-                className="flex items-center gap-2 px-8 py-4 border border-[#f5f2ed]/30 rounded-full hover:bg-[#f5f2ed]/5 transition-all outline-none focus:ring-2 focus:ring-[#F27D26]"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Upload Reference</span>
-              </button>
-            </div>
-
-            {/* Effect Controls */}
-            <AnimatePresence>
-              {isProcessed && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mt-10 p-6 bg-white/5 rounded-2xl border border-white/10"
-                >
-                  <div className="space-y-6">
-                    <div>
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Style Configuration</span>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => setEffectStyle('chiaroscuro')}
-                            className={`px-3 py-1 rounded-full text-[9px] uppercase tracking-tighter transition-all ${effectStyle === 'chiaroscuro' ? 'bg-[#F27D26] text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
-                          >
-                            Chiaroscuro
-                          </button>
-                          <button 
-                            onClick={() => setEffectStyle('roversi')}
-                            className={`px-3 py-1 rounded-full text-[9px] uppercase tracking-tighter transition-all ${effectStyle === 'roversi' ? 'bg-[#F27D26] text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
-                          >
-                            Paolo Roversi
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Intensity Alpha</span>
-                        <span className="text-[10px] font-mono text-[#F27D26]">{(intensity * 100).toFixed(0)}%</span>
-                      </div>
-                      <input 
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={intensity}
-                        onChange={(e) => setIntensity(parseFloat(e.target.value))}
-                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#F27D26]"
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="mt-16 flex items-center gap-12 border-t border-[#f5f2ed]/10 pt-8">
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Segmentation</span>
-                <span className="text-sm font-medium">META SAM 2</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Refinement</span>
-                <span className="text-sm font-medium">BiRefNet</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Edge Quality</span>
-                <span className="text-sm font-medium">LOSSLESS</span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Right Column: Image Preview */}
-        <div className="relative flex items-center justify-center p-8 lg:p-12 order-1 lg:order-2 bg-[#050505]">
+      <main className="relative z-10 flex flex-col items-center min-h-[calc(100vh-89px)] py-12 px-4">
+        {/* Top: Image Preview */}
+        <div className="relative w-full max-w-4xl flex items-center justify-center mb-12">
           <div className="absolute inset-0 z-0 overflow-hidden opacity-20">
              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-radial-gradient from-[#F27D26]/20 to-transparent blur-[100px]" />
           </div>
@@ -515,7 +410,7 @@ export default function App() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.8 }}
-                    className={`w-full h-full relative overflow-hidden ${effectStyle === 'chiaroscuro' ? 'bg-[#050c14]' : 'bg-[#f0f0f0]'}`}
+                    className="w-full h-full relative overflow-hidden bg-[#050c14]"
                   >
                     {isCropping && (
                       <div className="absolute inset-0 z-[60] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-md">
@@ -582,8 +477,8 @@ export default function App() {
                     )}
 
                     {/* Studio Backdrop */}
-                    <div className={`absolute inset-0 z-0 overflow-hidden ${effectStyle === 'chiaroscuro' ? 'bg-[#050c14]' : 'bg-[#f0f0f0]'}`}>
-                       <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-radial-gradient blur-3xl ${effectStyle === 'chiaroscuro' ? 'from-[#0a1a2a] to-transparent opacity-60' : 'from-white to-transparent opacity-80'}`} />
+                    <div className="absolute inset-0 z-0 overflow-hidden bg-[#050c14]">
+                       <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-radial-gradient blur-3xl ${effectStyle === 'chiaroscuro' ? 'from-[#0a1a2a] to-transparent opacity-60' : 'from-white/10 to-transparent opacity-20'}`} />
                     </div>
                     
                     <motion.div
@@ -604,8 +499,8 @@ export default function App() {
                         className="w-full h-full object-cover transition-all duration-300"
                         style={{
                           filter: effectStyle === 'chiaroscuro' 
-                            ? `brightness(${1 - (0.02 * intensity)}) contrast(${1 + (0.5 * intensity)}) saturate(0.7) drop-shadow(0 0 ${20 + 20 * intensity}px rgba(0,0,0,0.8))`
-                            : `blur(${2 * intensity}px) brightness(${1.05 + (0.1 * intensity)}) contrast(${0.95 - (0.15 * intensity)}) saturate(0.5) sepia(0.2)`,
+                            ? `brightness(${1 - (0.02 * intensity)}) contrast(${1 + (0.5 * intensity)}) saturate(0.7) ${showOutline ? 'drop-shadow(0 0 10px rgba(242, 125, 38, 0.5))' : 'drop-shadow(0 0 40px rgba(0,0,0,0.8))'}`
+                            : `blur(${2 * intensity}px) brightness(${1.05 + (0.1 * intensity)}) contrast(${0.95 - (0.15 * intensity)}) saturate(0.5) sepia(0.2) ${showOutline ? 'drop-shadow(0 0 12px rgba(255,255,255,0.3))' : ''}`,
                         }}
                         referrerPolicy="no-referrer"
                       />
@@ -617,11 +512,11 @@ export default function App() {
                       style={{
                         background: effectStyle === 'chiaroscuro'
                           ? 'linear-gradient(215deg, rgba(242, 125, 38, 0.2) 0%, transparent 60%)'
-                          : 'linear-gradient(215deg, rgba(255, 255, 255, 0.4) 0%, transparent 60%)'
+                          : 'linear-gradient(215deg, rgba(255, 255, 255, 0.1) 0%, transparent 60%)'
                       }}
                     />
 
-                    <div className={`absolute top-4 left-4 ${effectStyle === 'chiaroscuro' ? 'bg-[#F27D26] text-black' : 'bg-black text-white'} px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] font-bold z-30`}>
+                    <div className={`absolute top-4 left-4 ${effectStyle === 'chiaroscuro' ? 'bg-[#F27D26] text-black' : 'bg-white/10 backdrop-blur-md text-white'} px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.2em] font-bold z-30`}>
                       {effectStyle === 'chiaroscuro' ? 'Chiaroscuro' : 'Paolo Roversi'}
                     </div>
 
@@ -656,14 +551,161 @@ export default function App() {
             {/* Decorative Elements */}
             <div className="absolute -top-6 -right-6 w-12 h-12 border-t-2 border-r-2 border-[#F27D26]/40 rounded-tr-xl" />
             <div className="absolute -bottom-6 -left-6 w-12 h-12 border-b-2 border-l-2 border-[#F27D26]/40 rounded-bl-xl" />
-            
-            <div className="absolute top-1/2 -right-16 translate-y-[-50%] hidden xl:block">
-              <div className="rail-text flex flex-col gap-8 opacity-20 transform -rotate-180">
-                <span className="text-[10px] uppercase tracking-[0.5em] writing-vertical">CHIAROSCURO</span>
-                <span className="text-[10px] uppercase tracking-[0.5em] writing-vertical">STUDIO-ELITE</span>
+          </div>
+        </div>
+
+        {/* Middle: Controls (Beneath image, above title) */}
+        <div className="w-full max-w-4xl px-8 mb-16">
+          <div className="grid lg:grid-cols-2 gap-8 items-start">
+            {/* Primary Action Buttons */}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap gap-4">
+                <button 
+                  onClick={handleApplyEffect}
+                  disabled={isScanning}
+                  className="group relative px-8 py-4 bg-[#f5f2ed] text-black font-semibold rounded-full overflow-hidden transition-all hover:pr-12 disabled:opacity-50 min-w-[220px]"
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    {isScanning ? "Applying..." : isProcessed ? "Original View" : "Apply Studio Effect"}
+                    <Sparkles className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+                  </span>
+                  <motion.div 
+                    className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100"
+                    initial={false}
+                    animate={isProcessed ? { x: 0 } : { x: -10 }}
+                  >
+                    <Sparkles className="w-4 h-4 text-[#F27D26]" />
+                  </motion.div>
+                </button>
+                
+                <button 
+                  onClick={triggerUpload}
+                  disabled={isScanning}
+                  className="flex items-center gap-2 px-8 py-4 border border-[#f5f2ed]/30 rounded-full hover:bg-[#f5f2ed]/5 transition-all outline-none focus:ring-2 focus:ring-[#F27D26]"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Upload Reference</span>
+                </button>
+                <input 
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+              </div>
+
+              {/* Stats / Meta */}
+              <div className="flex items-center gap-10 mt-4 border-t border-[#f5f2ed]/10 pt-6">
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Segmentation</span>
+                  <span className="text-[11px] font-medium">META SAM 2</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Refinement</span>
+                  <span className="text-[11px] font-medium">BiRefNet</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-widest text-[#f5f2ed]/40 mb-1">Outline</span>
+                  <span className="text-[11px] font-medium text-[#F27D26]">{showOutline ? "ENABLED" : "AUTO-OFF"}</span>
+                </div>
               </div>
             </div>
+
+            {/* Effect Controls */}
+            <div className="w-full">
+              <AnimatePresence>
+                {isProcessed && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="p-6 bg-white/5 rounded-2xl border border-white/10"
+                  >
+                    <div className="space-y-6">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Style Configuration</span>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setEffectStyle('chiaroscuro')}
+                            className={`px-3 py-1 rounded-full text-[9px] uppercase tracking-tighter transition-all ${effectStyle === 'chiaroscuro' ? 'bg-[#F27D26] text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
+                          >
+                            Chiaroscuro
+                          </button>
+                          <button 
+                            onClick={() => setEffectStyle('roversi')}
+                            className={`px-3 py-1 rounded-full text-[9px] uppercase tracking-tighter transition-all ${effectStyle === 'roversi' ? 'bg-[#F27D26] text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'}`}
+                          >
+                            Roversi
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between group">
+                        <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Subject Outline</span>
+                        <button 
+                          onClick={() => setShowOutline(!showOutline)}
+                          className={`w-10 h-5 rounded-full transition-all relative ${showOutline ? 'bg-[#F27D26]' : 'bg-white/10'}`}
+                        >
+                          <motion.div 
+                            className="absolute top-1 left-1 w-3 h-3 bg-white rounded-full"
+                            animate={{ x: showOutline ? 20 : 0 }}
+                          />
+                        </button>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[10px] uppercase tracking-widest text-[#f5f2ed]/40">Intensity Alpha</span>
+                          <span className="text-[10px] font-mono text-[#F27D26]">{(intensity * 100).toFixed(0)}%</span>
+                        </div>
+                        <input 
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={intensity}
+                          onChange={(e) => setIntensity(parseFloat(e.target.value))}
+                          className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#F27D26]"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                {!isProcessed && (
+                  <div className="p-6 bg-white/5 rounded-2xl border border-white/10 border-dashed flex items-center justify-center h-[180px] text-[10px] uppercase tracking-widest text-white/20">
+                    Apply effect to access controls
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
+        </div>
+
+        {/* Bottom: Hero Text Section */}
+        <div className="w-full max-w-4xl px-8 pb-20">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+            className="text-center md:text-left"
+          >
+            <span className="text-[#F27D26] text-xs font-bold uppercase tracking-[0.3em] mb-4 block">
+              Classical Chiaroscuro
+            </span>
+            <h1 className="text-6xl lg:text-8xl font-light leading-[0.9] mb-10 tracking-tighter max-w-2xl mx-auto md:mx-0">
+              Subject <br />
+              <span className="italic font-serif text-[#F27D26]">Mastery.</span>
+            </h1>
+            <div className="grid md:grid-cols-2 gap-12 text-[#f5f2ed]/70 text-lg leading-relaxed font-light text-left">
+              <p>
+                Automatic subject identification and smooth studio cropping. We eliminate the background and place your subject in a high-contrast environment, just as if it were taken in a professional studio using SAM 2 segmentation and BiRefNet refinement.
+              </p>
+              <p>
+                Inspired by the masters of light, our studio-elite algorithm focuses on the intersection of modern AI and classical photography techniques, providing lossless edge quality for professional portraiture.
+              </p>
+            </div>
+          </motion.div>
         </div>
       </main>
 
